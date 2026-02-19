@@ -7,6 +7,7 @@ interface DbItem {
   id: number;
   image_path: string;
   caption: string | null;
+  dominant_color: string | null;
   created_at: string;
   status: string;
 }
@@ -25,6 +26,12 @@ export default function CurioPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
+
+  // PIN change state
+  const [currentPin, setCurrentPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [pinStatus, setPinStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [pinError, setPinError] = useState("");
 
   const loadItems = useCallback(async () => {
     try {
@@ -253,6 +260,63 @@ export default function CurioPage() {
           ))}
         </div>
       )}
+
+      {/* ── Change PIN ─────────────────────────────── */}
+      <div className="mt-10 border-t border-border pt-6 pb-8">
+        <h3 className="mb-4 text-sm font-bold text-text-secondary">Change PIN</h3>
+        <div className="space-y-3">
+          <input
+            type="password"
+            inputMode="numeric"
+            value={currentPin}
+            onChange={(e) => setCurrentPin(e.target.value)}
+            placeholder="Current PIN"
+            className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <input
+            type="password"
+            inputMode="numeric"
+            value={newPin}
+            onChange={(e) => setNewPin(e.target.value)}
+            placeholder="New PIN"
+            className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          {pinError && (
+            <p className="text-sm text-red-400">{pinError}</p>
+          )}
+          {pinStatus === "saved" && (
+            <p className="text-sm text-green-400">PIN updated.</p>
+          )}
+          <button
+            onClick={async () => {
+              setPinError("");
+              setPinStatus("saving");
+              try {
+                const res = await fetch("/api/auth", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ currentPin, newPin }),
+                });
+                if (!res.ok) {
+                  const data = await res.json();
+                  throw new Error(data.error || "Failed");
+                }
+                setPinStatus("saved");
+                setCurrentPin("");
+                setNewPin("");
+                setTimeout(() => setPinStatus("idle"), 2000);
+              } catch (err) {
+                setPinError(err instanceof Error ? err.message : "Failed");
+                setPinStatus("error");
+              }
+            }}
+            disabled={pinStatus === "saving" || !currentPin || !newPin}
+            className="w-full rounded-xl bg-surface-elevated py-3 text-sm font-semibold text-text transition-opacity disabled:opacity-40"
+          >
+            {pinStatus === "saving" ? "Saving..." : "Update PIN"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { getAllItems, insertItem } from "@/lib/db";
+import { getAllItems, insertItem, updateItemColor } from "@/lib/db";
 import { UPLOAD_DIR } from "@/lib/paths";
+import { extractColorWithGPT } from "@/lib/extract-color-gpt";
 
 export async function GET() {
   const items = getAllItems();
@@ -27,7 +28,16 @@ export async function POST(request: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(filePath, buffer);
 
-  const item = insertItem(`/api/uploads/${filename}`, caption?.trim() || null);
+  const imagePath = `/api/uploads/${filename}`;
+  const item = insertItem(imagePath, caption?.trim() || null);
+
+  // Extract dominant color via GPT Vision in the background —
+  // don't block the upload response
+  extractColorWithGPT(imagePath).then((color) => {
+    if (color) {
+      updateItemColor(item.id, color);
+    }
+  });
 
   return NextResponse.json(item, { status: 201 });
 }

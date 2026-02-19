@@ -1,9 +1,7 @@
 "use client";
 
-import { useRef, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRef, useEffect, useState } from "react";
 import type { Item } from "@/lib/types";
-import { generateMockItems } from "@/lib/mock-data";
 
 // ── Sizes ──────────────────────────────────────────────
 const RADII = [100, 80, 64, 54, 46];
@@ -27,8 +25,6 @@ const IDLE_FREQ = 0.0007;
 const WALL_BOUNCE = -0.35;
 const DRAG_SPRING = 0.32;
 const THROW_MULT = 2.8;
-const TAP_MS = 280;
-const TAP_SPEED = 3.5;
 
 // ── Types ──────────────────────────────────────────────
 interface Bubble {
@@ -54,13 +50,6 @@ interface Drag {
 }
 
 // ── Random vibrant color ───────────────────────────────
-function randomColor(): string {
-  const h = Math.random() * 360;
-  const s = 55 + Math.random() * 30;
-  const l = 50 + Math.random() * 15;
-  return `hsl(${h | 0}, ${s | 0}%, ${l | 0}%)`;
-}
-
 function hslToHex(h: number, s: number, l: number): string {
   s /= 100;
   l /= 100;
@@ -78,88 +67,6 @@ function randomHexColor(): string {
   const s = 55 + Math.random() * 30;
   const l = 50 + Math.random() * 15;
   return hslToHex(h, s, l);
-}
-
-// ── Create bubbles from real items ─────────────────────
-function createBubblesFromItems(
-  items: Item[],
-  w: number,
-  h: number,
-): Bubble[] {
-  return items.map((item, i) => {
-    const r = pickRadius(i, items.length);
-    const angle = (i / items.length) * Math.PI * 2 + Math.random() * 0.4;
-    const edgeDist = Math.max(w, h) * 0.65;
-
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = item.image_url;
-
-    const bubble: Bubble = {
-      id: item.id,
-      x: w / 2 + Math.cos(angle) * edgeDist,
-      y: h / 2 + Math.sin(angle) * edgeDist,
-      vx: 0,
-      vy: 0,
-      r,
-      mass: r * r,
-      phase: Math.random() * Math.PI * 2,
-      item,
-      color: item.dominant_color || randomHexColor(),
-      img,
-      loaded: false,
-    };
-
-    img.onload = () => {
-      bubble.loaded = true;
-    };
-    return bubble;
-  });
-}
-
-// ── Placeholder bubbles when no data ───────────────────
-const PLACEHOLDER_COUNT = 24;
-
-function createPlaceholderBubbles(w: number, h: number): Bubble[] {
-  return Array.from({ length: PLACEHOLDER_COUNT }, (_, i) => {
-    const r = pickRadius(i, PLACEHOLDER_COUNT);
-    const angle = (i / PLACEHOLDER_COUNT) * Math.PI * 2 + Math.random() * 0.4;
-    const edgeDist = Math.max(w, h) * 0.65;
-    const color = randomHexColor();
-
-    const placeholder: Item = {
-      id: `placeholder-${i}`,
-      store_id: "",
-      image_url: "",
-      thumb_url: null,
-      blurhash: null,
-      caption: null,
-      created_at: new Date().toISOString(),
-      status: "ready",
-      aspect_ratio: 1,
-      dominant_color: color,
-      quality_score: 0,
-      impressions: 0,
-      opens: 0,
-      avg_dwell: 0,
-      ctr: 0,
-    };
-
-    return {
-      id: placeholder.id,
-      x: w / 2 + Math.cos(angle) * edgeDist,
-      y: h / 2 + Math.sin(angle) * edgeDist,
-      vx: 0,
-      vy: 0,
-      r,
-      mass: r * r,
-      phase: Math.random() * Math.PI * 2,
-      item: placeholder,
-      color,
-      img: null,
-      loaded: false,
-    };
-  });
 }
 
 // ── Physics step ───────────────────────────────────────
@@ -336,21 +243,86 @@ function render(
   ctx.restore();
 }
 
+// ── Build bubbles from DB items ─────────────────────────
+
+interface DbItem {
+  id: number;
+  image_path: string;
+  caption: string | null;
+  created_at: string;
+  dominant_color: string | null;
+}
+
+function buildBubbles(dbItems: DbItem[], w: number, h: number): Bubble[] {
+  const total = dbItems.length;
+  if (total === 0) return [];
+
+  const bubbles: Bubble[] = [];
+
+  for (let i = 0; i < total; i++) {
+    const r = pickRadius(i, total);
+    const angle = (i / total) * Math.PI * 2 + Math.random() * 0.4;
+    const edgeDist = Math.max(w, h) * 0.65;
+
+    const db = dbItems[i];
+    const color = db.dominant_color || randomHexColor();
+
+    const item: Item = {
+      id: String(db.id),
+      store_id: "x-smoke-shop",
+      image_url: db.image_path,
+      thumb_url: db.image_path,
+      blurhash: null,
+      caption: db.caption,
+      created_at: db.created_at,
+      status: "ready",
+      aspect_ratio: 1,
+      dominant_color: color,
+      quality_score: 1,
+      impressions: 0,
+      opens: 0,
+      avg_dwell: 0,
+      ctr: 0,
+    };
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = db.image_path;
+
+    const bubble: Bubble = {
+      id: item.id,
+      x: w / 2 + Math.cos(angle) * edgeDist,
+      y: h / 2 + Math.sin(angle) * edgeDist,
+      vx: 0,
+      vy: 0,
+      r,
+      mass: r * r,
+      phase: Math.random() * Math.PI * 2,
+      item,
+      color,
+      img,
+      loaded: false,
+    };
+
+    img.onload = () => {
+      bubble.loaded = true;
+    };
+
+    bubbles.push(bubble);
+  }
+
+  return bubbles;
+}
+
 // ── Component ──────────────────────────────────────────
 export function BubbleFeed() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [empty, setEmpty] = useState(false);
   const stateRef = useRef<{
     bubbles: Bubble[];
     drag: Drag | null;
     raf: number;
   }>({ bubbles: [], drag: null, raf: 0 });
-
-  const router = useRouter();
-
-  const addItems = useCallback((items: Item[], w: number, h: number) => {
-    const newBubbles = createBubblesFromItems(items, w, h);
-    stateRef.current.bubbles = [...stateRef.current.bubbles, ...newBubbles];
-  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -372,12 +344,16 @@ export function BubbleFeed() {
     window.addEventListener("resize", resize);
 
     const rect = parent.getBoundingClientRect();
-    const items = generateMockItems(30, 0);
-    if (items.length > 0) {
-      addItems(items, rect.width, rect.height);
-    } else {
-      stateRef.current.bubbles = createPlaceholderBubbles(rect.width, rect.height);
-    }
+
+    fetch("/api/items")
+      .then((r) => r.json())
+      .then((items: DbItem[]) => {
+        state.bubbles = buildBubbles(items, rect.width, rect.height);
+        if (items.length === 0) setEmpty(true);
+      })
+      .catch(() => {
+        setEmpty(true);
+      });
 
     let running = true;
     const loop = () => {
@@ -390,7 +366,6 @@ export function BubbleFeed() {
     };
     loop();
 
-    // ── Pointer helpers ────────────────────────────────
     const pos = (e: MouseEvent | TouchEvent) => {
       const r = canvas.getBoundingClientRect();
       const src =
@@ -430,14 +405,8 @@ export function BubbleFeed() {
     const onUp = () => {
       const d = state.drag;
       if (!d) return;
-      const elapsed = Date.now() - d.t0;
-      const speed = Math.hypot(d.bubble.vx, d.bubble.vy);
-      if (elapsed < TAP_MS && speed < TAP_SPEED) {
-        router.push(`/item/${d.bubble.item.id}`);
-      } else {
-        d.bubble.vx *= THROW_MULT;
-        d.bubble.vy *= THROW_MULT;
-      }
+      d.bubble.vx *= THROW_MULT;
+      d.bubble.vy *= THROW_MULT;
       state.drag = null;
     };
 
@@ -463,7 +432,24 @@ export function BubbleFeed() {
       canvas.removeEventListener("touchend", onUp);
       canvas.removeEventListener("touchcancel", onUp);
     };
-  }, [addItems, router]);
+  }, []);
+
+  if (empty) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+        <div className="rounded-2xl border border-border bg-surface px-8 py-10">
+          <svg className="mx-auto h-10 w-10 text-text-tertiary" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+          </svg>
+          <p className="mt-4 text-base font-semibold text-text">No items yet</p>
+          <p className="mt-1.5 text-sm text-text-secondary">
+            New products are on the way — check back soon!
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <canvas

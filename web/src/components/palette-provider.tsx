@@ -3,12 +3,21 @@
 import {
   useEffect,
   useState,
+  useRef,
   createContext,
   useContext,
   type ReactNode,
 } from "react";
 import { derivePalette, paletteToCSS, type SitePalette } from "@/lib/palette";
 import type { Item } from "@/lib/types";
+
+interface DbItem {
+  id: number;
+  image_path: string;
+  caption: string | null;
+  dominant_color: string | null;
+  created_at: string;
+}
 
 interface PaletteContext {
   heroItem: Item | null;
@@ -55,16 +64,68 @@ function clearPalette(p: SitePalette) {
 }
 
 export function PaletteProvider({ children }: { children: ReactNode }) {
-  const [heroItem] = useState<Item | null>(null);
+  const [heroItem, setHeroItem] = useState<Item | null>(null);
   const [palette, setPalette] = useState<SitePalette | null>(null);
+  const paletteRef = useRef<SitePalette | null>(null);
 
   useEffect(() => {
-    const hex = randomAccentHex();
-    const p = applyPalette(hex);
-    setPalette(p);
+    let cancelled = false;
+
+    async function init() {
+      // 1. Apply a random palette immediately so the page is never un-themed
+      const fallbackHex = randomAccentHex();
+      const fallbackPalette = applyPalette(fallbackHex);
+      if (cancelled) return;
+      paletteRef.current = fallbackPalette;
+      setPalette(fallbackPalette);
+
+      // 2. Fetch items and pick a random product
+      let items: DbItem[] = [];
+      try {
+        const res = await fetch("/api/items");
+        items = await res.json();
+      } catch {
+        // No items available — keep the random palette
+        return;
+      }
+
+      if (cancelled || items.length === 0) return;
+
+      const chosen = items[Math.floor(Math.random() * items.length)];
+
+      // 3. Use the GPT-extracted dominant color stored in the DB
+      const seedHex = chosen.dominant_color ?? fallbackHex;
+
+      // 4. Apply the product-derived palette
+      const p = applyPalette(seedHex);
+      paletteRef.current = p;
+      setPalette(p);
+
+      // 5. Expose the chosen item as the hero
+      setHeroItem({
+        id: String(chosen.id),
+        store_id: "x-smoke-shop",
+        image_url: chosen.image_path,
+        thumb_url: chosen.image_path,
+        blurhash: null,
+        caption: chosen.caption,
+        created_at: chosen.created_at,
+        status: "ready",
+        aspect_ratio: 1,
+        dominant_color: seedHex,
+        quality_score: 1,
+        impressions: 0,
+        opens: 0,
+        avg_dwell: 0,
+        ctr: 0,
+      });
+    }
+
+    init();
 
     return () => {
-      clearPalette(p);
+      cancelled = true;
+      if (paletteRef.current) clearPalette(paletteRef.current);
     };
   }, []);
 
