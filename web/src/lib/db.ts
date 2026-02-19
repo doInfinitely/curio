@@ -1,10 +1,16 @@
 import Database from "better-sqlite3";
-import { DB_PATH } from "./paths";
+import { mkdirSync } from "fs";
+import path from "path";
+import { DB_PATH, UPLOAD_DIR } from "./paths";
 
 let _db: Database.Database | null = null;
 
 function getDb(): Database.Database {
   if (!_db) {
+    // Ensure data directories exist before opening DB
+    mkdirSync(path.dirname(DB_PATH), { recursive: true });
+    mkdirSync(UPLOAD_DIR, { recursive: true });
+
     _db = new Database(DB_PATH);
     _db.pragma("journal_mode = WAL");
     _db.pragma("foreign_keys = ON");
