@@ -1,5 +1,5 @@
 [build]
-buildCommand = "cd web && npm install && npm run build"
+builder = "nixpacks"
 
 [deploy]
 startCommand = "cd web && npm run start"
