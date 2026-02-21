@@ -3,7 +3,11 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { UPLOAD_DIR } from "./paths";
 
-const openai = new OpenAI();
+let _openai: OpenAI | null = null;
+function getOpenAI() {
+  if (!_openai) _openai = new OpenAI();
+  return _openai;
+}
 
 /**
  * Uses GPT-4o vision to analyze an uploaded product image and return
@@ -28,7 +32,7 @@ export async function extractColorWithGPT(
           ? "image/webp"
           : "image/png";
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       max_tokens: 60,
       messages: [
