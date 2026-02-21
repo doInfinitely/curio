@@ -43,3 +43,6 @@ web/public/uploads/
 # generated native folders
 /ios
 /android
+web/curio.db-shm
+web/curio.db-wal
+web/curio.db
