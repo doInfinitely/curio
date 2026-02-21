@@ -31,13 +31,12 @@ export async function POST(request: NextRequest) {
   const imagePath = `/api/uploads/${filename}`;
   const item = insertItem(imagePath, caption?.trim() || null);
 
-  // Extract dominant color via GPT Vision in the background —
-  // don't block the upload response
-  extractColorWithGPT(imagePath).then((color) => {
-    if (color) {
-      updateItemColor(item.id, color);
-    }
-  });
+  // Extract dominant color via GPT Vision — await so it completes before response
+  const color = await extractColorWithGPT(imagePath);
+  if (color) {
+    updateItemColor(item.id, color);
+    item.dominant_color = color;
+  }
 
   return NextResponse.json(item, { status: 201 });
 }
